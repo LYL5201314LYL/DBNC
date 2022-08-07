@@ -2,17 +2,19 @@ tic
 clc;
 clear;
 
-% Make a linear dynamical system
+% Make a linear dynamical system（LDS）
 
-ss = 4;  %slice size
+ss = 4;  %总节点
+%% 组内
 intra = zeros(ss);   %每个time slice 有3个节点
 intra(2,4) = 1;     %节点2-->4有向边连接
 intra(3,4) = 1;     %节点3-->4有向边连接
+%% 组间
 inter = zeros(ss);
 inter([1 2],2) = 1;  %前一时刻的1和2节点，与后一时刻的2节点有向边‘-->’相连
 inter(3,3) = 1;
-
-onodes = [1 3];  %observable node 编号
+%% 节点属性 
+onodes = [1 3 ];  %observable node 编号
 dnodes = [];     %离散节点
 U = 1; %size of input
 X = 2; % size of hidden state
@@ -23,7 +25,7 @@ node_sizes = [U X Y Z];%节点的大小
 eclass1 = [1 2 3 4];
 eclass2 = [1 5 6 4];
 eclass = [eclass1 eclass2];
-%建立DBN
+%% 建立DBN
 bnet = mk_dbn(intra, inter, node_sizes, 'discrete', dnodes, 'eclass1', eclass1, 'eclass2', eclass2, 'observed', onodes);
 
 %input 
@@ -38,9 +40,14 @@ B = [ 7.5469; 0.2088];
 X_weight = [ 7.5469 0.5182  -3.7735 ; 0.2088 0.0377    0.8956  ];
 C = [0 1 1];
 D = 0;
+% A = [ 0.9605  0.0096; -0.9631   -0.0026];
+% B = [ 0.0791; 1.962];
+% X_weight = [ 0.0791 0.9605  0.0096 ; 1.962 -0.9631   -0.0026 ];
+% C = [0 1 0];
+% D = 0;
+
 x0_mean = zeros(X,1);
 Cov_x0 = 100*eye(X);   %第一时间片的x初始化
-
 x1_mean = zeros(X,1);
 Cov_x1 = 100*eye(X);
 
@@ -63,10 +70,9 @@ bnet.CPD{3} = gaussian_CPD(bnet, 3, 'mean', Z0_mean, 'cov', Cov_z0, 'cov_prior_w
 bnet.CPD{4} = gaussian_CPD(bnet, 4, 'mean', Y_mean, 'cov', Cov_y, 'weights', C, 'clamp_mean', 1,'cov_prior_weight', 0);
 bnet.CPD{5} = gaussian_CPD(bnet, 6, 'mean', x1_mean, 'cov', Cov_x1, 'weights', X_weight, 'clamp_mean', 1,'cov_prior_weight', 0);
 bnet.CPD{6} = gaussian_CPD(bnet, 7, 'mean', Z_mean, 'cov', Cov_z, 'weights', 1, 'clamp_mean', 1,'cov_prior_weight', 0);
-
+%% 模型求解
 %T = 5; % fixed length sequences
-T = 20; % fixed length sequences
-
+T = 20; % 固定长度序列
 clear engine;
 %engine{1} = kalman_inf_engine(bnet);
 %engine{2} = jtree_unrolled_dbn_inf_engine(bnet, T);
@@ -74,16 +80,15 @@ clear engine;
 engine = jtree_dbn_inf_engine(bnet);
 %N = length(engine);
 
-% inference
+%% inference推断
+% ev = sample_dbn(bnet, T-2);
+evidence = cell(ss,T-2);%元胞数组
+%得到输入和输出的 evidences
 
-%ev = sample_dbn(bnet, T-2);
-evidence = cell(ss,T-2);
-%get input and output evidences
-
-%evidence(onodes,:) = ev(onodes, :);
-evidence{1,T-2} = 0;
-evidence{4,T-2} = 0;
-evedence{3,T-2} = 0;
+% evidence(onodes,:) = ev(onodes, :);
+evidence{1,T-2} = 0;%输入
+evidence{4,T-2} = 0;%输出
+evedence{3,T-2} = 0;%扰动
 evidence{1,T-3} = 0;
 evidence{4,T-3} = 0;
 evedence{3,T-3} = 0;
@@ -110,6 +115,7 @@ for i = 1:150
     end
     ut = evidence{1,t};  %t时刻的input
     zt = evidence{3,t};
+    %卡尔曼线性方程
     X_t1 = A*X_t + B*ut;
     %Y_t = C*X_t;
     Y_t1 =  C(1,1:2)*X_t1 + zt;
